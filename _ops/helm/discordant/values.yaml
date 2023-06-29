@@ -1,0 +1,12 @@
+revision: v0.0.1
+
+turg:
+  target: {}
+  permissions:
+    members: []
+    roles: []
+  period:
+    min: 10s
+    max: 30s
+
+secrets: []

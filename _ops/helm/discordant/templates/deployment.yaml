@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "release.name" . }}
+  labels:
+    app: {{ include "release.name" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "release.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "release.name" . }}
+    spec:
+      containers:
+      - name: discordant
+        image: {{ .Values.repository }}:{{ .Values.revision }}
+        imagePullPolicy: IfNotPresent
+        resources:
+          limits:
+            memory: "500Mi"
+          requests:
+            memory: "250Mi"
+        env:
+        {{- include "container.env.secrets" .Values.secrets | nindent 8 }}
+        envFrom:
+        - configMapRef:
+            name: {{ include "release.name" . }}

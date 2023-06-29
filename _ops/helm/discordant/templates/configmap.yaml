@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "release.name" . }}
+data:
+  {{ if .Values.turg.guild }}DSC_TURG_GUILD: {{ .Values.turg.guild }}{{ end }}
+  {{ if .Values.turg.target.category }}DSC_TURG_TARGET_CATEGORY: {{ .Values.turg.target.category }}{{ end }}
+  {{ if .Values.turg.target.channel }}DSC_TURG_TARGET_CHANNEL: {{ .Values.turg.target.channel }}{{ end }}
+  {{ if .Values.turg.permissions.members }}DSC_TURG_PERMISSIONS_MEMBERS: {{ join "," .Values.turg.permissions.members }}{{ end }}
+  {{ if .Values.turg.permissions.roles }}DSC_TURG_PERMISSIONS_ROLES: {{ join "," .Values.turg.permissions.roles }}{{ end }}
+  {{ if .Values.turg.period.min }}DSC_TURG_PERIOD_MIN: {{ .Values.turg.period.min }}{{ end }}
+  {{ if .Values.turg.period.max }}DSC_TURG_PERIOD_MAX: {{ .Values.turg.period.max }}{{ end }}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: discordant
+description: The deployment charts for discordant
+
+type: application
+version: 0.1.0

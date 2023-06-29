@@ -1,0 +1,8 @@
+version: '3'
+
+services:
+  discordant:
+    image: ${REPOSITORY}:${REVISION}
+    build:
+      context: .
+      dockerfile: cmd/discordant//Dockerfile

@@ -1,0 +1,27 @@
+repository: aufish/discordant
+revision: v0.0.1
+
+turg:
+  guild: The Songs of Eddiair
+  target:
+    category: The Ballad of Il Nial
+    channel: general
+  permissions:
+    members:
+    - ampersandys
+    - theaufish
+    roles:
+    - DM
+  period:
+    min: 1m
+    max: 5m
+
+secrets:
+- from: discordant-local
+  prefix: dsc_turg_bot
+  values:
+    token: turg-bot-token
+- from: discordant-local
+  prefix: dsc_gifs
+  values:
+    giphy_token: giphy-token
