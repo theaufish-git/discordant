@@ -1,6 +1,22 @@
 repository: aufish/discordant
 revision: v0.0.1
 
+alwinn:
+  guild: The Songs of Eddiair
+  target:
+    category: The Ballad of Il Nial
+    channel: general
+  permissions:
+    members:
+    - shadow71327
+    - theaufish
+    roles:
+    - DM
+  period:
+    min: 1m
+    max: 5m
+  inspiration_die: 8
+
 turg:
   guild: The Songs of Eddiair
   target:
@@ -17,6 +33,10 @@ turg:
     max: 5m
 
 secrets:
+- from: discordant-local
+  prefix: dsc_alwinn_bot
+  values:
+    token: alwinn-bot-token
 - from: discordant-local
   prefix: dsc_turg_bot
   values:

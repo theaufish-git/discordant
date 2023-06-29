@@ -7,8 +7,9 @@ import (
 )
 
 type Discordant struct {
-	Gifs Gifs
-	Turg Turg
+	Gifs   Gifs
+	Alwinn Alwinn
+	Turg   Turg
 }
 
 type Gifs struct {
@@ -33,6 +34,15 @@ type Permissions struct {
 type Period struct {
 	Min time.Duration `default:"1m"`
 	Max time.Duration `default:"5m"`
+}
+
+type Alwinn struct {
+	Bot            Bot
+	Guild          string `required:"true"`
+	Target         Target
+	Permissions    Permissions
+	Period         Period
+	InspirationDie int64 `split_words:"true" default:"4"`
 }
 
 type Turg struct {

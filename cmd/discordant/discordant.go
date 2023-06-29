@@ -27,6 +27,7 @@ func main() {
 	}
 
 	bs := []bots.Bot{
+		mustReturn(bots.NewAlwinn(gdb, &cfg.Alwinn)),
 		mustReturn(bots.NewTurg(gdb, &cfg.Turg)),
 	}
 

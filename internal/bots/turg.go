@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	gifSearches = []string{
+	turgGifs = []string{
 		"bless",
 		"blessed",
 		"you are blessed",
@@ -173,7 +173,7 @@ func (t *Turg) Run(ctx context.Context) error {
 			x := rand.Intn(10)
 			switch x {
 			case 0, 1, 2:
-				gifURL, err := t.gdb.Gif(gifSearches[x])
+				gifURL, err := t.gdb.Gif(turgGifs[x])
 				if err != nil {
 					log.Println("cannot find gif:", err)
 					continue
