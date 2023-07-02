@@ -44,4 +44,4 @@ secrets:
 - from: discordant-local
   prefix: dsc_gifs
   values:
-    giphy_token: giphy-token
+    token: tenor-token

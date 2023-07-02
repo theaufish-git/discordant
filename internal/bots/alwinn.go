@@ -26,10 +26,10 @@ var (
 	}
 
 	alwinnGifs = []string{
-		"silvery barbs",
-		"counter spell",
+		"silverybarbs",
+		"counterspell",
 		"inspiration",
-		"inspired",
+		"you're inspired",
 	}
 
 	alwinnisms = []string{

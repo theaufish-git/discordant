@@ -13,8 +13,8 @@ type Discordant struct {
 }
 
 type Gifs struct {
-	Driver     string `default:"giphy"`
-	GiphyToken string `split_words:"true" required:"true"`
+	Driver string `required:"true"`
+	Token  string `split_words:"true" required:"true"`
 }
 
 type Bot struct {

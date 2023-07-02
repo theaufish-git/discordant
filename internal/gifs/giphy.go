@@ -12,6 +12,12 @@ type Giphy struct {
 	token string
 }
 
+type GiphyResp struct {
+	Data []struct {
+		URL string `json:"url"`
+	} `json:"data"`
+}
+
 func NewGiphy(token string) *Giphy {
 	return &Giphy{token: token}
 }
@@ -33,24 +39,19 @@ func (g *Giphy) Gif(query string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	var responseData struct {
-		Data []struct {
-			URL string `json:"url"`
-		} `json:"data"`
-	}
-
 	jsonBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
 
-	err = json.Unmarshal(jsonBytes, &responseData)
+	giphyResp := &GiphyResp{}
+	err = json.Unmarshal(jsonBytes, &giphyResp)
 	if err != nil {
 		return "", err
 	}
 
 	// Randomly select one of the available GIFs
-	selectedGif := responseData.Data[rand.Intn(len(responseData.Data))]
+	selectedGif := giphyResp.Data[rand.Intn(len(giphyResp.Data))]
 
 	return selectedGif.URL, nil
 }

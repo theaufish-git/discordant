@@ -23,7 +23,9 @@ func main() {
 	var gdb gifs.Giffer
 	switch cfg.Gifs.Driver {
 	case "giphy":
-		gdb = gifs.NewGiphy(cfg.Gifs.GiphyToken)
+		gdb = gifs.NewGiphy(cfg.Gifs.Token)
+	case "tenor":
+		gdb = gifs.NewTenor(cfg.Gifs.Token)
 	}
 
 	bs := []bots.Bot{
