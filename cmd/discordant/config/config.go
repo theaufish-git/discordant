@@ -7,6 +7,7 @@ import (
 )
 
 type Discordant struct {
+	DAL    DAL
 	Gifs   Gifs
 	Alwinn Alwinn
 	Turg   Turg
@@ -17,8 +18,28 @@ type Gifs struct {
 	Token  string `split_words:"true" required:"true"`
 }
 
+type DAL struct {
+	Driver        string `default:"googlestorage"`
+	GoogleStorage GoogleStorage
+}
+
+type GoogleStorage struct {
+	Bucket string `default:"discordant"`
+	Key    string `default:"/tmp/discordant-storage-rw.json"`
+}
+
 type Bot struct {
-	Token string `required:"true"`
+	Token       string `required:"true"`
+	Guild       string `required:"true"`
+	Target      Target
+	Permissions Permissions
+}
+
+type IsmBot struct {
+	Bot
+
+	Period Period
+	Pause  bool `default:"true"`
 }
 
 type Target struct {
@@ -37,20 +58,13 @@ type Period struct {
 }
 
 type Alwinn struct {
-	Bot            Bot
-	Guild          string `required:"true"`
-	Target         Target
-	Permissions    Permissions
-	Period         Period
+	IsmBot
 	InspirationDie int64 `split_words:"true" default:"4"`
 }
 
 type Turg struct {
-	Bot         Bot
-	Guild       string `required:"true"`
-	Target      Target
-	Permissions Permissions
-	Period      Period
+	IsmBot
+	TempHP int64 `split_words:"true" default:"0"`
 }
 
 func NewDiscordantFromEnv(prefix string) (*Discordant, error) {

@@ -1,10 +1,10 @@
 repository: aufish/discordant
-revision: v0.0.1
+revision: v0.3.0
 
 alwinn:
-  guild: TheAufish
+  guild: The Songs of Eddiair
   target:
-    category: test
+    category: The Ballad of Il Nial
     channel: general
   permissions:
     members:
@@ -18,9 +18,9 @@ alwinn:
   inspiration_die: 8
 
 turg:
-  guild: TheAufish
+  guild: The Songs of Eddiair
   target:
-    category: test
+    category: The Ballad of Il Nial
     channel: general
   permissions:
     members:
@@ -35,11 +35,11 @@ turg:
 secrets:
   discordant:
   - from: discordant
-    prefix: dsc_alwinn_bot
+    prefix: dsc_alwinn
     values:
       token: alwinn-bot-token
   - from: discordant
-    prefix: dsc_turg_bot
+    prefix: dsc_turg
     values:
       token: turg-bot-token
   - from: discordant

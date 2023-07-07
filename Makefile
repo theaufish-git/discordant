@@ -2,7 +2,7 @@ BACKUP ?= undefined
 DEPLOYMENT ?= default
 HELM ?= helm
 PLAYER ?= undefined
-REPOSITORY ?= undefined
+REPOSITORY ?= aufish/discordant
 REVISION ?= undefined
 
 SET_REPOSITORY ?=

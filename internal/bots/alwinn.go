@@ -10,8 +10,13 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/theaufish-git/discordant/cmd/discordant/config"
+	"github.com/theaufish-git/discordant/internal/dal"
 	"github.com/theaufish-git/discordant/internal/gifs"
 	"github.com/theaufish-git/discordant/internal/period"
+)
+
+const (
+	alwinnCfgFile = "alwinn-config"
 )
 
 var (
@@ -46,10 +51,11 @@ type Alwinn struct {
 	inspirationDie *Signal[int64]
 
 	cfg *config.Alwinn
+	adb dal.Alwinn
 	gdb gifs.Giffer
 }
 
-func NewAlwinn(gdb gifs.Giffer, cfg *config.Alwinn) (*Alwinn, error) {
+func NewAlwinn(adb dal.Alwinn, gdb gifs.Giffer, cfg *config.Alwinn) (*Alwinn, error) {
 	return &Alwinn{
 		Generic: Generic{
 			bot:          cfg.Bot,
@@ -61,6 +67,7 @@ func NewAlwinn(gdb gifs.Giffer, cfg *config.Alwinn) (*Alwinn, error) {
 			handlers:     map[string]Command{},
 		},
 		cfg: cfg,
+		adb: adb,
 		gdb: gdb,
 	}, nil
 }
@@ -74,14 +81,24 @@ func (a *Alwinn) Initialize(ctx context.Context) error {
 		return err
 	}
 
+	cfg, err := a.adb.Load(ctx, alwinnCfgFile)
+	if err != nil {
+		return err
+	}
+
+	if cfg != nil {
+		a.cfg = cfg
+	}
+
 	a.period = NewSignal[period.Period]()
 	a.period.Value = period.NewRandom(a.cfg.Period.Min, a.cfg.Period.Max)
 	a.pause = NewSignal[bool]()
+	a.pause.Value = a.cfg.Pause
 	a.inspirationDie = NewSignal[int64]()
 	a.inspirationDie.Value = a.cfg.InspirationDie
 
 	// create command
-	_, err := a.ApplicationCommandCreate(a.State.User.ID, a.GID(), &discordgo.ApplicationCommand{
+	_, err = a.ApplicationCommandCreate(a.State.User.ID, a.GID(), &discordgo.ApplicationCommand{
 		Name:        "alwinn",
 		Description: "Alwinn-ator commands",
 		Options: []*discordgo.ApplicationCommandOption{
@@ -151,6 +168,9 @@ func (a *Alwinn) Shutdown(ctx context.Context) error {
 }
 
 func (a *Alwinn) Run(ctx context.Context) error {
+	var needsSave bool
+	cfgTicker := time.NewTicker(5 * time.Minute)
+	defer cfgTicker.Stop()
 	ismTicker := time.NewTicker(a.period.Value.Period())
 	defer ismTicker.Stop()
 	inspirationDieTicker := time.NewTicker(a.period.Value.Period())
@@ -160,9 +180,13 @@ func (a *Alwinn) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case period := <-a.period.C():
+			ismTicker.Reset(period.Period())
+			inspirationDieTicker.Reset(period.Period())
+
+			needsSave = true
+			a.cfg.Period.Max = period.Max()
+			a.cfg.Period.Min = period.Min()
 			a.period.Value = period
-			ismTicker.Reset(a.period.Value.Period())
-			inspirationDieTicker.Reset(a.period.Value.Period())
 		case pause := <-a.pause.C():
 			if a.pause.Value != pause {
 				if pause {
@@ -170,10 +194,26 @@ func (a *Alwinn) Run(ctx context.Context) error {
 				} else {
 					a.ChannelMessageSend(a.CID(), "Alwinn-ator activated. Theres a barb that needs silvering!")
 				}
+			} else {
+				continue
 			}
+
+			needsSave = true
+			a.cfg.Pause = pause
 			a.pause.Value = pause
 		case inspirationDie := <-a.inspirationDie.C():
+			needsSave = true
+			a.cfg.InspirationDie = inspirationDie
 			a.inspirationDie.Value = inspirationDie
+		case <-cfgTicker.C:
+			if !needsSave {
+				continue
+			}
+
+			if err := a.adb.Save(ctx, alwinnCfgFile, a.cfg); err != nil {
+				log.Println("could not save config:", err)
+			}
+			needsSave = false
 		case <-ismTicker.C:
 			ismTicker.Reset(a.period.Value.Period())
 			if a.pause.Value {

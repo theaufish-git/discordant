@@ -7,6 +7,8 @@ import (
 
 type Period interface {
 	Period() time.Duration
+	Min() time.Duration
+	Max() time.Duration
 }
 
 type Random struct {
@@ -29,4 +31,12 @@ func NewRandom(min time.Duration, max time.Duration) *Random {
 func (r *Random) Period() time.Duration {
 	dur := time.Duration(rand.Intn(r.seconds)) * time.Second
 	return dur + r.min
+}
+
+func (r *Random) Min() time.Duration {
+	return r.min
+}
+
+func (r *Random) Max() time.Duration {
+	return r.max
 }

@@ -24,7 +24,11 @@ spec:
           requests:
             memory: "250Mi"
         env:
-        {{- include "container.env.secrets" .Values.secrets | nindent 8 }}
+        {{- include "container.secrets.env" (list "discordant" .Values.secrets) | nindent 8 }}
         envFrom:
         - configMapRef:
             name: {{ include "release.name" . }}
+        volumeMounts:
+        {{- include "container.secrets.mounts" (list "discordant" .Values.secretFiles) | nindent 8 }}
+      volumes:
+      {{- include "container.secrets.volumes" (list "discordant" .Values.secretFiles) | nindent 6 }}

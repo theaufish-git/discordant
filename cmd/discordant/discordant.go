@@ -7,6 +7,8 @@ import (
 
 	"github.com/theaufish-git/discordant/cmd/discordant/config"
 	"github.com/theaufish-git/discordant/internal/bots"
+	"github.com/theaufish-git/discordant/internal/dal"
+	"github.com/theaufish-git/discordant/internal/dal/googlestorage"
 	"github.com/theaufish-git/discordant/internal/gifs"
 )
 
@@ -26,14 +28,34 @@ func main() {
 		gdb = gifs.NewGiphy(cfg.Gifs.Token)
 	case "tenor":
 		gdb = gifs.NewTenor(cfg.Gifs.Token)
-	}
-
-	bs := []bots.Bot{
-		mustReturn(bots.NewAlwinn(gdb, &cfg.Alwinn)),
-		mustReturn(bots.NewTurg(gdb, &cfg.Turg)),
+	default:
+		log.Fatal("invalid giffer driver:", cfg.Gifs.Driver)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+
+	var adb dal.Alwinn
+	var tdb dal.Turg
+	var err error
+	switch cfg.DAL.Driver {
+	case "googlestorage":
+		adb, err = googlestorage.NewJSON[config.Alwinn](ctx, &cfg.DAL.GoogleStorage)
+		if err != nil {
+			log.Fatal("cannot create google storage for alwinn db:", err)
+		}
+
+		tdb, err = googlestorage.NewJSON[config.Turg](ctx, &cfg.DAL.GoogleStorage)
+		if err != nil {
+			log.Fatal("cannot create google storage for turg db:", err)
+		}
+	default:
+		log.Fatal("invalid dal driver:", cfg.DAL.Driver)
+	}
+
+	bs := []bots.Bot{
+		mustReturn(bots.NewAlwinn(adb, gdb, &cfg.Alwinn)),
+		mustReturn(bots.NewTurg(tdb, gdb, &cfg.Turg)),
+	}
 
 	wg := sync.WaitGroup{}
 	for _, bot := range bs {
