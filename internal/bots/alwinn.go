@@ -11,7 +11,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/theaufish-git/discordant/cmd/discordant/config"
 	"github.com/theaufish-git/discordant/internal/dal"
-	"github.com/theaufish-git/discordant/internal/gifs"
 	"github.com/theaufish-git/discordant/internal/period"
 )
 
@@ -50,12 +49,13 @@ type Alwinn struct {
 	pause          *Signal[bool]
 	inspirationDie *Signal[int64]
 
-	cfg *config.Alwinn
-	adb dal.Alwinn
-	gdb gifs.Giffer
+	needsSave bool
+	cfg       *config.Alwinn
+	adb       dal.Alwinn
+	gdb       dal.Gif
 }
 
-func NewAlwinn(adb dal.Alwinn, gdb gifs.Giffer, cfg *config.Alwinn) (*Alwinn, error) {
+func NewAlwinn(adb dal.Alwinn, gdb dal.Gif, cfg *config.Alwinn) (*Alwinn, error) {
 	return &Alwinn{
 		Generic: Generic{
 			bot:          cfg.Bot,
@@ -66,9 +66,10 @@ func NewAlwinn(adb dal.Alwinn, gdb gifs.Giffer, cfg *config.Alwinn) (*Alwinn, er
 			allowRoles:   map[string]struct{}{},
 			handlers:     map[string]Command{},
 		},
-		cfg: cfg,
-		adb: adb,
-		gdb: gdb,
+		needsSave: true,
+		cfg:       cfg,
+		adb:       adb,
+		gdb:       gdb,
 	}, nil
 }
 
@@ -87,6 +88,8 @@ func (a *Alwinn) Initialize(ctx context.Context) error {
 	}
 
 	if cfg != nil {
+		a.needsSave = true
+		cfg.Token = a.cfg.Token
 		a.cfg = cfg
 	}
 
@@ -168,7 +171,6 @@ func (a *Alwinn) Shutdown(ctx context.Context) error {
 }
 
 func (a *Alwinn) Run(ctx context.Context) error {
-	var needsSave bool
 	cfgTicker := time.NewTicker(5 * time.Minute)
 	defer cfgTicker.Stop()
 	ismTicker := time.NewTicker(a.period.Value.Period())
@@ -183,7 +185,7 @@ func (a *Alwinn) Run(ctx context.Context) error {
 			ismTicker.Reset(period.Period())
 			inspirationDieTicker.Reset(period.Period())
 
-			needsSave = true
+			a.needsSave = true
 			a.cfg.Period.Max = period.Max()
 			a.cfg.Period.Min = period.Min()
 			a.period.Value = period
@@ -198,22 +200,22 @@ func (a *Alwinn) Run(ctx context.Context) error {
 				continue
 			}
 
-			needsSave = true
+			a.needsSave = true
 			a.cfg.Pause = pause
 			a.pause.Value = pause
 		case inspirationDie := <-a.inspirationDie.C():
-			needsSave = true
+			a.needsSave = true
 			a.cfg.InspirationDie = inspirationDie
 			a.inspirationDie.Value = inspirationDie
 		case <-cfgTicker.C:
-			if !needsSave {
+			if !a.needsSave {
 				continue
 			}
 
 			if err := a.adb.Save(ctx, alwinnCfgFile, a.cfg); err != nil {
 				log.Println("could not save config:", err)
 			}
-			needsSave = false
+			a.needsSave = false
 		case <-ismTicker.C:
 			ismTicker.Reset(a.period.Value.Period())
 			if a.pause.Value {
@@ -223,7 +225,7 @@ func (a *Alwinn) Run(ctx context.Context) error {
 			x := rand.Intn(3)
 			switch x {
 			case 0, 1:
-				gifURL, err := a.gdb.Gif(alwinnGifs[x])
+				gifURL, err := a.gdb.Fetch(ctx, alwinnGifs[x])
 				if err != nil {
 					log.Println("cannot find gif:", err)
 					continue

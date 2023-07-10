@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io/ioutil"
 
 	"github.com/theaufish-git/discordant/cmd/discordant/config"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 	"google.golang.org/api/storage/v1"
 )
@@ -31,21 +31,15 @@ func NewJSON[T any](ctx context.Context, cfg *config.GoogleStorage) (*JSON[T], e
 func (j *JSON[T]) Load(ctx context.Context, id string) (*T, error) {
 	resp, err := j.svc.Objects.Get(j.cfg.Bucket, id).Download()
 	if err != nil {
+		if apiErr, ok := err.(*googleapi.Error); ok && apiErr.Code == 404 {
+			return nil, nil
+		}
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	bytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(bytes) == 0 {
-		return nil, nil
-	}
-
 	var obj T
-	if err := json.Unmarshal(bytes, &obj); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&obj); err != nil {
 		return nil, err
 	}
 

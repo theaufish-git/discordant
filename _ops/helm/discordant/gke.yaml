@@ -43,11 +43,11 @@ secrets:
     values:
       token: turg-bot-token
   - from: discordant
-    prefix: dsc_gifs
+    prefix: dsc_dal_gif
     values:
       token: tenor-token
 
 secretFiles:
   discordant:
   - from: discordant-storage-rw
-    path: /tmp/discordant-storage-rw.json
+    path: /tmp/creds

@@ -8,28 +8,29 @@ import (
 
 type Discordant struct {
 	DAL    DAL
-	Gifs   Gifs
 	Alwinn Alwinn
 	Turg   Turg
 }
 
-type Gifs struct {
-	Driver string `required:"true"`
-	Token  string `split_words:"true" required:"true"`
-}
-
 type DAL struct {
-	Driver        string `default:"googlestorage"`
+	ConfigDriver  string `default:"googlestorage"`
 	GoogleStorage GoogleStorage
+
+	GifDriver string `default:"tenor"`
+	Gif       Gif
 }
 
 type GoogleStorage struct {
 	Bucket string `default:"discordant"`
-	Key    string `default:"/tmp/discordant-storage-rw.json"`
+	Key    string `default:"/tmp/creds/discordant-storage-rw.json"`
+}
+
+type Gif struct {
+	Token string `split_words:"true" required:"true"`
 }
 
 type Bot struct {
-	Token       string `required:"true"`
+	Token       string `required:"true" json:"-"`
 	Guild       string `required:"true"`
 	Target      Target
 	Permissions Permissions

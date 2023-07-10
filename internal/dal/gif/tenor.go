@@ -1,6 +1,7 @@
-package gifs
+package gif
 
 import (
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"math/rand"
@@ -26,7 +27,7 @@ func NewTenor(token string) *Tenor {
 	return &Tenor{token: token}
 }
 
-func (t *Tenor) Gif(query string) (string, error) {
+func (t *Tenor) Fetch(ctx context.Context, query string) (string, error) {
 	u, err := url.Parse("https://tenor.googleapis.com/v2/search")
 	if err != nil {
 		return "", err

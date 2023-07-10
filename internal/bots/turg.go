@@ -11,7 +11,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/theaufish-git/discordant/cmd/discordant/config"
 	"github.com/theaufish-git/discordant/internal/dal"
-	"github.com/theaufish-git/discordant/internal/gifs"
 	"github.com/theaufish-git/discordant/internal/period"
 )
 
@@ -41,12 +40,13 @@ type Turg struct {
 	pause  *Signal[bool]
 	tmpHP  *Signal[int64]
 
-	cfg *config.Turg
-	tdb dal.Turg
-	gdb gifs.Giffer
+	needsSave bool
+	cfg       *config.Turg
+	tdb       dal.Turg
+	gdb       dal.Gif
 }
 
-func NewTurg(tdb dal.Turg, gdb gifs.Giffer, cfg *config.Turg) (*Turg, error) {
+func NewTurg(tdb dal.Turg, gdb dal.Gif, cfg *config.Turg) (*Turg, error) {
 	return &Turg{
 		Generic: Generic{
 			bot:          cfg.Bot,
@@ -57,9 +57,10 @@ func NewTurg(tdb dal.Turg, gdb gifs.Giffer, cfg *config.Turg) (*Turg, error) {
 			allowRoles:   map[string]struct{}{},
 			handlers:     map[string]Command{},
 		},
-		cfg: cfg,
-		tdb: tdb,
-		gdb: gdb,
+		needsSave: true,
+		cfg:       cfg,
+		tdb:       tdb,
+		gdb:       gdb,
 	}, nil
 }
 
@@ -78,7 +79,9 @@ func (t *Turg) Initialize(ctx context.Context) error {
 	}
 
 	if cfg != nil {
+		cfg.Token = t.cfg.Token
 		t.cfg = cfg
+		t.needsSave = false
 	}
 
 	t.period = NewSignal[period.Period]()
@@ -159,7 +162,6 @@ func (t *Turg) Shutdown(ctx context.Context) error {
 }
 
 func (t *Turg) Run(ctx context.Context) error {
-	var needsSave bool
 	cfgTicker := time.NewTicker(5 * time.Minute)
 	ismTicker := time.NewTicker(t.period.Value.Period())
 	defer ismTicker.Stop()
@@ -173,7 +175,7 @@ func (t *Turg) Run(ctx context.Context) error {
 			ismTicker.Reset(period.Period())
 			tmpHPTicker.Reset(period.Period())
 
-			needsSave = true
+			t.needsSave = true
 			t.cfg.Period.Max = period.Max()
 			t.cfg.Period.Min = period.Min()
 			t.period.Value = period
@@ -188,22 +190,22 @@ func (t *Turg) Run(ctx context.Context) error {
 				continue
 			}
 
-			needsSave = true
+			t.needsSave = true
 			t.cfg.Pause = pause
 			t.pause.Value = pause
 		case tmpHP := <-t.tmpHP.C():
-			needsSave = true
+			t.needsSave = true
 			t.cfg.TempHP = tmpHP
 			t.tmpHP.Value = tmpHP
 		case <-cfgTicker.C:
-			if !needsSave {
+			if !t.needsSave {
 				continue
 			}
 
 			if err := t.tdb.Save(ctx, turgCfgFile, t.cfg); err != nil {
 				log.Println("could not save config:", err)
 			}
-			needsSave = false
+			t.needsSave = false
 		case <-ismTicker.C:
 			ismTicker.Reset(t.period.Value.Period())
 			if t.pause.Value {
@@ -213,7 +215,7 @@ func (t *Turg) Run(ctx context.Context) error {
 			x := rand.Intn(10)
 			switch x {
 			case 0, 1, 2:
-				gifURL, err := t.gdb.Gif(turgGifs[x])
+				gifURL, err := t.gdb.Fetch(ctx, turgGifs[x])
 				if err != nil {
 					log.Println("cannot find gif:", err)
 					continue
@@ -229,7 +231,7 @@ func (t *Turg) Run(ctx context.Context) error {
 				continue
 			}
 
-			t.ChannelMessageSend(t.CID(), fmt.Sprintf("dont forget your temp hp! (%v)", t.tmpHP.Value))
+			t.ChannelMessageSend(t.CID(), fmt.Sprintf("don't forget your temp hp! (%v)", t.tmpHP.Value))
 		}
 	}
 }

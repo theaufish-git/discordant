@@ -1,6 +1,7 @@
-package gifs
+package gif
 
 import (
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"math/rand"
@@ -22,7 +23,7 @@ func NewGiphy(token string) *Giphy {
 	return &Giphy{token: token}
 }
 
-func (g *Giphy) Gif(query string) (string, error) {
+func (g *Giphy) Fetch(ctx context.Context, query string) (string, error) {
 	u, err := url.Parse("https://api.giphy.com/v1/gifs/search")
 	if err != nil {
 		return "", err

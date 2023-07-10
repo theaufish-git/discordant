@@ -22,6 +22,7 @@
 {{- range $secretFile := $secretFiles }}
 - name: {{ $secretFile.from }}
   mountPath: {{ $secretFile.path }}
+  readOnly: true
 {{- end }}
 {{- end -}}
 

@@ -22,4 +22,6 @@ turg:
 gifs:
   driver: tenor
 
-secrets: []
+secrets: {}
+
+secretFiles: {}
