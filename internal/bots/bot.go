@@ -13,6 +13,13 @@ type Bot interface {
 	Shutdown(context.Context) error
 }
 
+type Chatter interface {
+	Bot
+	ChannelID() string
+	DisplayName() string
+	Session() *discordgo.Session
+}
+
 func findOption(options []*discordgo.ApplicationCommandInteractionDataOption, name string) *discordgo.ApplicationCommandInteractionDataOption {
 	for _, option := range options {
 		if option.Name == name {

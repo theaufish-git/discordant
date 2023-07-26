@@ -2,78 +2,116 @@ package main
 
 import (
 	"context"
-	"log"
-	"sync"
 
+	"github.com/rleszilm/genms/logging"
+	"github.com/rleszilm/genms/service"
 	"github.com/theaufish-git/discordant/cmd/discordant/config"
 	"github.com/theaufish-git/discordant/internal/bots"
 	"github.com/theaufish-git/discordant/internal/dal"
 	"github.com/theaufish-git/discordant/internal/dal/gif"
 	"github.com/theaufish-git/discordant/internal/dal/googlestorage"
+	"github.com/theaufish-git/discordant/internal/dal/static"
 )
 
-func mustReturn[T any](x T, err error) T {
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return x
-}
+var (
+	logs = logging.NewChannel("discordant")
+)
 
 func main() {
-	cfg := mustReturn(config.NewDiscordantFromEnv("dsc"))
+	logs.Print("starting discordant")
+	logs.Print("parsing config")
+	cfg, err := config.NewFromEnv[config.Discordant]("dsc")
+	if err != nil {
+		logs.Fatal("cannot parse config:", err)
+	}
 
+	manager := service.NewManager()
+
+	logs.Print("creating gif search driver")
 	var gdb dal.Gif
 	switch cfg.DAL.GifDriver {
 	case "giphy":
-		gdb = gif.NewGiphy(cfg.DAL.Gif.Token)
+		giphy, err := config.NewFromEnv[config.Gif]("dsc_dal_giphy")
+		if err != nil {
+			logs.Fatal("cannot parse config:", err)
+		}
+
+		gdb = gif.NewGiphy(giphy)
 	case "tenor":
-		gdb = gif.NewTenor(cfg.DAL.Gif.Token)
+		tenor, err := config.NewFromEnv[config.Gif]("dsc_dal_tenor")
+		if err != nil {
+			logs.Fatal("cannot parse config:", err)
+		}
+
+		gdb = gif.NewTenor(tenor)
 	default:
-		log.Fatal("invalid giffer driver:", cfg.DAL.GifDriver)
+		logs.Fatal("invalid gif driver:", cfg.DAL.GifDriver)
 	}
+	manager.Register(gdb)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 
+	logs.Print("creating bot storage drivers")
 	var adb dal.Alwinn
 	var tdb dal.Turg
-	var err error
 	switch cfg.DAL.ConfigDriver {
-	case "googlestorage":
-		adb, err = googlestorage.NewJSON[config.Alwinn](ctx, &cfg.DAL.GoogleStorage)
+	case "staticstorage":
+		ss, err := config.NewFromEnv[config.StaticStorage]("dsc_dal_static_storage")
 		if err != nil {
-			log.Fatal("cannot create google storage for alwinn db:", err)
+			logs.Fatal("cannot parse config:", err)
 		}
 
-		tdb, err = googlestorage.NewJSON[config.Turg](ctx, &cfg.DAL.GoogleStorage)
+		adb, err = static.NewJSON[config.Alwinn](ctx, ss)
 		if err != nil {
-			log.Fatal("cannot create google storage for turg db:", err)
+			logs.Fatal("cannot create google storage for alwinn db:", err)
+		}
+
+		tdb, err = static.NewJSON[config.Turg](ctx, ss)
+		if err != nil {
+			logs.Fatal("cannot create google storage for turg db:", err)
+		}
+	case "googlestorage":
+		gs, err := config.NewFromEnv[config.GoogleCloudStorage]("dsc_dal_google_storage")
+		if err != nil {
+			logs.Fatal("cannot parse config:", err)
+		}
+
+		adb, err = googlestorage.NewJSON[config.Alwinn](ctx, gs)
+		if err != nil {
+			logs.Fatal("cannot create google storage for alwinn db:", err)
+		}
+
+		tdb, err = googlestorage.NewJSON[config.Turg](ctx, gs)
+		if err != nil {
+			logs.Fatal("cannot create google storage for turg db:", err)
 		}
 	default:
-		log.Fatal("invalid dal driver:", cfg.DAL.ConfigDriver)
+		logs.Fatal("invalid dal driver:", cfg.DAL.ConfigDriver)
+	}
+	manager.Register(adb, tdb)
+
+	logs.Print("creating alwinn")
+	alBot, err := bots.NewAlwinn(adb, gdb, &cfg.Alwinn)
+	if err != nil {
+		logs.Fatal("could not create Alwinn:", err)
 	}
 
-	bs := []bots.Bot{
-		mustReturn(bots.NewAlwinn(adb, gdb, &cfg.Alwinn)),
-		mustReturn(bots.NewTurg(tdb, gdb, &cfg.Turg)),
+	logs.Print("creating turg")
+	tuBot, err := bots.NewTurg(tdb, gdb, &cfg.Turg)
+	if err != nil {
+		logs.Fatal("could not create Turg:", err)
 	}
 
-	wg := sync.WaitGroup{}
-	for _, bot := range bs {
-		if err := bot.Initialize(ctx); err != nil {
-			log.Fatalf("err starting %s: %v\n", bot.ID(), err)
-		}
-
-		wg.Add(1)
-		go func(bot bots.Bot) {
-			defer wg.Done()
-			defer cancel()
-
-			if err := bot.Run(ctx); err != nil {
-				log.Printf("completed %s: %v", bot.ID(), err)
-			}
-			bot.Shutdown(ctx)
-		}(bot)
+	logs.Print("starting bots")
+	manager.Register(alBot, tuBot)
+	if err := manager.Initialize(ctx); err != nil {
+		logs.Fatal("could not initialize service:", err)
 	}
 
-	wg.Wait()
+	logs.Print("waiting")
+	manager.Wait()
+	logs.Print("shutting down bots")
+	if err := manager.Shutdown(ctx); err != nil {
+		logs.Fatal("could not shutdown service:", err)
+	}
 }

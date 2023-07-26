@@ -32,3 +32,10 @@ template:
 
 uninstall:
 	$(HELM) uninstall $(DEPLOYMENT)
+
+lint:
+	golangci-lint run
+
+tool-chain:
+	go install \
+		github.com/golangci/golangci-lint/cmd/golangci-lint

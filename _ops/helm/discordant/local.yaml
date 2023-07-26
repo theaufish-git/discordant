@@ -1,53 +1,44 @@
 repository: aufish/discordant
-revision: v0.0.1
+revision: v0.4.12
+
+dal:
+  config:
+    driver: staticstorage
+    googlestorage:
+      bucket: none
+      key: none
+    staticstorage:
+      dir: /opt/discordant/cfg
+
+  gif:
+    driver: tenor
 
 alwinn:
-  guild: TheAufish
-  target:
-    category: test
-    channel: general
-  permissions:
-    members:
-    - shadow71327
-    - theaufish
-    roles:
-    - DM
   period:
     min: 1m
     max: 5m
   inspiration_die: 8
 
 turg:
-  guild: TheAufish
-  target:
-    category: test
-    channel: general
-  permissions:
-    members:
-    - ampersandys
-    - theaufish
-    roles:
-    - DM
   period:
     min: 1m
     max: 5m
 
 secrets:
   discordant:
-  - from: discordant
-    prefix: dsc_alwinn_bot
+  - from: discordant-local
+    prefix: dsc_alwinn
     values:
       token: alwinn-bot-token
-  - from: discordant
-    prefix: dsc_turg_bot
+  - from: discordant-local
+    prefix: dsc_turg
     values:
       token: turg-bot-token
-  - from: discordant
-    prefix: dsc_gifs
+  - from: discordant-local
+    prefix: dsc_dal_tenor
     values:
       token: tenor-token
-
-secretFiles:
-  discordant:
-  - from: discordant-storage-rw
-    path: /tmp/discordant-storage-rw.json
+  - from: discordant-local
+    prefix: dsc_dal_giphy
+    values:
+      token: giphy-token

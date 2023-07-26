@@ -1,26 +1,22 @@
 revision: v0.0.1
 
+dal:
+  config:
+    googlestorage: {}
+  gif:
+    giphy: {}
+    tenor: {}
+
 alwinn:
-  target: {}
-  permissions:
-    members: []
-    roles: []
   period:
     min: 10s
     max: 30s
   inspiration_die: 4
 
 turg:
-  target: {}
-  permissions:
-    members: []
-    roles: []
   period:
     min: 10s
     max: 30s
-
-gifs:
-  driver: tenor
 
 secrets: {}
 

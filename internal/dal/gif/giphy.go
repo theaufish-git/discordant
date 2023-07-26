@@ -7,9 +7,13 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+
+	"github.com/rleszilm/genms/service"
+	"github.com/theaufish-git/discordant/cmd/discordant/config"
 )
 
 type Giphy struct {
+	service.UnimplementedService
 	token string
 }
 
@@ -19,8 +23,20 @@ type GiphyResp struct {
 	} `json:"data"`
 }
 
-func NewGiphy(token string) *Giphy {
-	return &Giphy{token: token}
+func NewGiphy(cfg *config.Gif) *Giphy {
+	return &Giphy{token: cfg.Token}
+}
+
+func (g *Giphy) Initialize(ctx context.Context) error {
+	return nil
+}
+
+func (g *Giphy) Shutdown(ctx context.Context) error {
+	return nil
+}
+
+func (g *Giphy) String() string {
+	return "giphy"
 }
 
 func (g *Giphy) Fetch(ctx context.Context, query string) (string, error) {

@@ -3,19 +3,13 @@ kind: ConfigMap
 metadata:
   name: {{ include "release.name" . }}
 data:
-  {{ if .Values.alwinn.guild }}DSC_ALWINN_GUILD: {{ .Values.alwinn.guild | quote }}{{ end }}
-  {{ if .Values.alwinn.target.category }}DSC_ALWINN_TARGET_CATEGORY: {{ .Values.alwinn.target.category | quote }}{{ end }}
-  {{ if .Values.alwinn.target.channel }}DSC_ALWINN_TARGET_CHANNEL: {{ .Values.alwinn.target.channel | quote }}{{ end }}
-  {{ if .Values.alwinn.permissions.members }}DSC_ALWINN_PERMISSIONS_MEMBERS: {{ join "," .Values.alwinn.permissions.members | quote }}{{ end }}
-  {{ if .Values.alwinn.permissions.roles }}DSC_ALWINN_PERMISSIONS_ROLES: {{ join "," .Values.alwinn.permissions.roles | quote }}{{ end }}
   {{ if .Values.alwinn.period.min }}DSC_ALWINN_PERIOD_MIN: {{ .Values.alwinn.period.min | quote }}{{ end }}
   {{ if .Values.alwinn.period.max }}DSC_ALWINN_PERIOD_MAX: {{ .Values.alwinn.period.max | quote }}{{ end }}
   {{ if .Values.alwinn.inspiration_die }}DSC_ALWINN_INSPIRATION_DIE: {{ .Values.alwinn.inspiration_die | quote }}{{ end }}
-  {{ if .Values.turg.guild }}DSC_TURG_GUILD: {{ .Values.turg.guild | quote }}{{ end }}
-  {{ if .Values.turg.target.category }}DSC_TURG_TARGET_CATEGORY: {{ .Values.turg.target.category | quote }}{{ end }}
-  {{ if .Values.turg.target.channel }}DSC_TURG_TARGET_CHANNEL: {{ .Values.turg.target.channel | quote }}{{ end }}
-  {{ if .Values.turg.permissions.members }}DSC_TURG_PERMISSIONS_MEMBERS: {{ join "," .Values.turg.permissions.members | quote }}{{ end }}
-  {{ if .Values.turg.permissions.roles }}DSC_TURG_PERMISSIONS_ROLES: {{ join "," .Values.turg.permissions.roles | quote }}{{ end }}
   {{ if .Values.turg.period.min }}DSC_TURG_PERIOD_MIN: {{ .Values.turg.period.min | quote }}{{ end }}
   {{ if .Values.turg.period.max }}DSC_TURG_PERIOD_MAX: {{ .Values.turg.period.max | quote }}{{ end }}
-  {{ if .Values.gifs.driver }}DSC_GIFS_DRIVER: {{ .Values.gifs.driver | quote }}{{ end }}
+  {{ if .Values.dal.config.driver }}DSC_DAL_CONFIG_DRIVER: {{ .Values.dal.config.driver | quote }}{{ end }}
+  {{ if .Values.dal.config.googlestorage.bucket }}DSC_DAL_GOOGLE_STORAGE_BUCKET: {{ .Values.dal.config.googlestorage.bucket | quote }}{{ end }}
+  {{ if .Values.dal.config.googlestorage.key }}DSC_DAL_GOOGLE_STORAGE_KEY: {{ .Values.dal.config.googlestorage.key | quote }}{{ end }}
+  {{ if .Values.dal.config.staticstorage.dir }}DSC_DAL_STATIC_STORAGE_DIR: {{ .Values.dal.config.staticstorage.dir | quote }}{{ end }}
+  {{ if .Values.dal.gif.driver }}DSC_DAL_GIF_DRIVER: {{ .Values.dal.gif.driver | quote }}{{ end }}

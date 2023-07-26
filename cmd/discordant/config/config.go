@@ -13,16 +13,17 @@ type Discordant struct {
 }
 
 type DAL struct {
-	ConfigDriver  string `default:"googlestorage"`
-	GoogleStorage GoogleStorage
-
-	GifDriver string `default:"tenor"`
-	Gif       Gif
+	ConfigDriver string `split_words:"true" required:"true"`
+	GifDriver    string `split_words:"true" required:"true"`
 }
 
-type GoogleStorage struct {
-	Bucket string `default:"discordant"`
-	Key    string `default:"/tmp/creds/discordant-storage-rw.json"`
+type StaticStorage struct {
+	Dir string `required:"true"`
+}
+
+type GoogleCloudStorage struct {
+	Bucket string `required:"true"`
+	Key    string `required:"true"`
 }
 
 type Gif struct {
@@ -30,22 +31,15 @@ type Gif struct {
 }
 
 type Bot struct {
-	Token       string `required:"true" json:"-"`
-	Guild       string `required:"true"`
-	Target      Target
-	Permissions Permissions
+	Token string `required:"true" json:"-"`
 }
 
 type IsmBot struct {
 	Bot
 
-	Period Period
-	Pause  bool `default:"true"`
-}
-
-type Target struct {
-	Category string `required:"true"`
-	Channel  string `required:"true"`
+	Period      Period
+	Pause       bool                `default:"true"`
+	Subscribers map[string]struct{} `default:""`
 }
 
 type Permissions struct {
@@ -54,8 +48,10 @@ type Permissions struct {
 }
 
 type Period struct {
-	Min time.Duration `default:"1m"`
-	Max time.Duration `default:"5m"`
+	Min      time.Duration `default:"1m"`
+	MinLimit time.Duration `split_words:"true" default:"1m"`
+	Max      time.Duration `default:"5m"`
+	MaxLimit time.Duration `split_words:"true" default:"5m"`
 }
 
 type Alwinn struct {
@@ -68,11 +64,11 @@ type Turg struct {
 	TempHP int64 `split_words:"true" default:"0"`
 }
 
-func NewDiscordantFromEnv(prefix string) (*Discordant, error) {
-	obj := &Discordant{}
-	if err := envconfig.Process(prefix, obj); err != nil {
+func NewFromEnv[T any](prefix string) (*T, error) {
+	var obj T
+	if err := envconfig.Process(prefix, &obj); err != nil {
 		return nil, err
 	}
 
-	return obj, nil
+	return &obj, nil
 }

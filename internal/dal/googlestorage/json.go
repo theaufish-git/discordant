@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/rleszilm/genms/service"
 	"github.com/theaufish-git/discordant/cmd/discordant/config"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -12,11 +13,12 @@ import (
 )
 
 type JSON[T any] struct {
+	service.UnimplementedService
 	svc *storage.Service
-	cfg *config.GoogleStorage
+	cfg *config.GoogleCloudStorage
 }
 
-func NewJSON[T any](ctx context.Context, cfg *config.GoogleStorage) (*JSON[T], error) {
+func NewJSON[T any](ctx context.Context, cfg *config.GoogleCloudStorage) (*JSON[T], error) {
 	svc, err := storage.NewService(ctx, option.WithCredentialsFile(cfg.Key))
 	if err != nil {
 		return nil, err
@@ -26,6 +28,18 @@ func NewJSON[T any](ctx context.Context, cfg *config.GoogleStorage) (*JSON[T], e
 		svc: svc,
 		cfg: cfg,
 	}, nil
+}
+
+func (j *JSON[T]) Initialize(_ context.Context) error {
+	return nil
+}
+
+func (j *JSON[T]) Shutdown(_ context.Context) error {
+	return nil
+}
+
+func (j *JSON[T]) String() string {
+	return "dal-json-" + j.cfg.Bucket
 }
 
 func (j *JSON[T]) Load(ctx context.Context, id string) (*T, error) {

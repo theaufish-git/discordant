@@ -7,9 +7,13 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+
+	"github.com/rleszilm/genms/service"
+	"github.com/theaufish-git/discordant/cmd/discordant/config"
 )
 
 type Tenor struct {
+	service.UnimplementedService
 	token string
 }
 
@@ -23,8 +27,20 @@ type TenorResponse struct {
 	} `json:"results"`
 }
 
-func NewTenor(token string) *Tenor {
-	return &Tenor{token: token}
+func NewTenor(cfg *config.Gif) *Tenor {
+	return &Tenor{token: cfg.Token}
+}
+
+func (t *Tenor) Initialize(ctx context.Context) error {
+	return nil
+}
+
+func (t *Tenor) Shutdown(ctx context.Context) error {
+	return nil
+}
+
+func (t *Tenor) String() string {
+	return "giphy"
 }
 
 func (t *Tenor) Fetch(ctx context.Context, query string) (string, error) {

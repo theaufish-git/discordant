@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
-	"math/rand"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/rleszilm/genms/logging"
+	"github.com/rleszilm/genms/service"
 	"github.com/theaufish-git/discordant/cmd/discordant/config"
 	"github.com/theaufish-git/discordant/internal/dal"
 	"github.com/theaufish-git/discordant/internal/period"
@@ -29,6 +29,10 @@ var (
 		100: {},
 	}
 
+	alwinnInspirtationDieFmts = []string{
+		"do you want to use your inspiration? it's a d%d",
+	}
+
 	alwinnGifs = []string{
 		"silverybarbs",
 		"counterspell",
@@ -36,15 +40,17 @@ var (
 		"you're inspired",
 	}
 
-	alwinnisms = []string{
+	alwinnIsms = []string{
 		"advantage because ~fairy fire~!",
 		"and I will inspire uh...",
 	}
 )
 
 type Alwinn struct {
-	Generic
+	service.UnimplementedService
 
+	ism            *Ism
+	logs           *logging.Channel
 	period         *Signal[period.Period]
 	pause          *Signal[bool]
 	inspirationDie *Signal[int64]
@@ -56,52 +62,46 @@ type Alwinn struct {
 }
 
 func NewAlwinn(adb dal.Alwinn, gdb dal.Gif, cfg *config.Alwinn) (*Alwinn, error) {
-	return &Alwinn{
-		Generic: Generic{
-			bot:          cfg.Bot,
-			target:       cfg.Target,
-			permissions:  cfg.Permissions,
-			guild:        cfg.Guild,
-			allowMembers: map[string]struct{}{},
-			allowRoles:   map[string]struct{}{},
-			handlers:     map[string]Command{},
-		},
+	a := &Alwinn{
+		logs:           logging.NewChannel("bot-alwinn"),
+		period:         NewSignal[period.Period](),
+		pause:          NewSignal[bool](),
+		inspirationDie: NewSignal[int64](),
+
 		needsSave: true,
 		cfg:       cfg,
 		adb:       adb,
 		gdb:       gdb,
-	}, nil
-}
-
-func (a *Alwinn) ID() string {
-	return "alwinn"
+	}
+	a.ism = NewIsm(a.String(), &cfg.Bot, a.gdb, a.period, a.pause)
+	a.ism.WithBucket(a.ism.PostIsm, 2, a.cfg.Subscribers, alwinnIsms...)
+	a.ism.WithBucket(a.ism.PostGif, 1, a.cfg.Subscribers, alwinnGifs...)
+	a.ism.WithBucket(a.PostInspirationDie, 1, a.cfg.Subscribers, alwinnInspirtationDieFmts...)
+	a.WithDependencies(a.ism)
+	return a, nil
 }
 
 func (a *Alwinn) Initialize(ctx context.Context) error {
-	if err := a.Generic.Initialize(ctx); err != nil {
-		return err
-	}
-
 	cfg, err := a.adb.Load(ctx, alwinnCfgFile)
 	if err != nil {
 		return err
 	}
 
 	if cfg != nil {
-		a.needsSave = true
 		cfg.Token = a.cfg.Token
 		a.cfg = cfg
+		a.needsSave = false
 	}
 
-	a.period = NewSignal[period.Period]()
-	a.period.Value = period.NewRandom(a.cfg.Period.Min, a.cfg.Period.Max)
-	a.pause = NewSignal[bool]()
-	a.pause.Value = a.cfg.Pause
-	a.inspirationDie = NewSignal[int64]()
-	a.inspirationDie.Value = a.cfg.InspirationDie
+	if a.cfg.Subscribers == nil {
+		a.cfg.Subscribers = map[string]struct{}{}
+	}
 
-	// create command
-	_, err = a.ApplicationCommandCreate(a.State.User.ID, a.GID(), &discordgo.ApplicationCommand{
+	a.period.Set(period.NewRandom(a.cfg.Period.Min, a.cfg.Period.Max))
+	a.pause.Set(a.cfg.Pause)
+	a.inspirationDie.Set(a.cfg.InspirationDie)
+
+	_, err = a.ism.sess.ApplicationCommandCreate(a.ism.sess.State.User.ID, "", &discordgo.ApplicationCommand{
 		Name:        "alwinn",
 		Description: "Alwinn-ator commands",
 		Options: []*discordgo.ApplicationCommandOption{
@@ -114,6 +114,19 @@ func (a *Alwinn) Initialize(ctx context.Context) error {
 						Type:        discordgo.ApplicationCommandOptionBoolean,
 						Description: "Whether to keep speaking.",
 						Name:        "pause",
+						Required:    true,
+					},
+				},
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Name:        "subscribe",
+				Description: "Alwinn-ator should speak in the channel the command is called from.",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionBoolean,
+						Description: "Whether to keep speaking in this channel.",
+						Name:        "subscribe",
 						Required:    true,
 					},
 				},
@@ -156,9 +169,11 @@ func (a *Alwinn) Initialize(ctx context.Context) error {
 		return err
 	}
 
-	a.Generic.WithHandler("pause", a.handlePause)
-	a.Generic.WithHandler("set-ism-period", a.handleSetIsmPeriod)
-	a.Generic.WithHandler("set-inspiration-die", a.handleSetInspirationDie)
+	a.ism.sess.WithInteractionCreateHandler("pause", a.handlePause)
+	a.ism.sess.WithInteractionCreateHandler("subscribe", a.handleSubscribe)
+	a.ism.sess.WithInteractionCreateHandler("set-ism-period", a.handleSetIsmPeriod)
+	a.ism.sess.WithInteractionCreateHandler("set-inspiration-die", a.handleSetInspirationDie)
+
 	return nil
 }
 
@@ -167,96 +182,53 @@ func (a *Alwinn) Shutdown(ctx context.Context) error {
 	a.pause.Close()
 	a.inspirationDie.Close()
 
-	return a.Generic.Shutdown(ctx)
-}
-
-func (a *Alwinn) Run(ctx context.Context) error {
-	cfgTicker := time.NewTicker(5 * time.Minute)
-	defer cfgTicker.Stop()
-	ismTicker := time.NewTicker(a.period.Value.Period())
-	defer ismTicker.Stop()
-	inspirationDieTicker := time.NewTicker(a.period.Value.Period())
-	defer inspirationDieTicker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case period := <-a.period.C():
-			ismTicker.Reset(period.Period())
-			inspirationDieTicker.Reset(period.Period())
-
-			a.needsSave = true
-			a.cfg.Period.Max = period.Max()
-			a.cfg.Period.Min = period.Min()
-			a.period.Value = period
-		case pause := <-a.pause.C():
-			if a.pause.Value != pause {
-				if pause {
-					a.ChannelMessageSend(a.CID(), "Alwinn-ator is taking a nap.")
-				} else {
-					a.ChannelMessageSend(a.CID(), "Alwinn-ator activated. Theres a barb that needs silvering!")
-				}
-			} else {
-				continue
-			}
-
-			a.needsSave = true
-			a.cfg.Pause = pause
-			a.pause.Value = pause
-		case inspirationDie := <-a.inspirationDie.C():
-			a.needsSave = true
-			a.cfg.InspirationDie = inspirationDie
-			a.inspirationDie.Value = inspirationDie
-		case <-cfgTicker.C:
-			if !a.needsSave {
-				continue
-			}
-
-			if err := a.adb.Save(ctx, alwinnCfgFile, a.cfg); err != nil {
-				log.Println("could not save config:", err)
-			}
-			a.needsSave = false
-		case <-ismTicker.C:
-			ismTicker.Reset(a.period.Value.Period())
-			if a.pause.Value {
-				continue
-			}
-
-			x := rand.Intn(3)
-			switch x {
-			case 0, 1:
-				gifURL, err := a.gdb.Fetch(ctx, alwinnGifs[x])
-				if err != nil {
-					log.Println("cannot find gif:", err)
-					continue
-				}
-				a.ChannelMessageSend(a.CID(), gifURL)
-			default:
-				ism := alwinnisms[rand.Intn(len(alwinnisms))]
-				a.ChannelMessageSend(a.CID(), ism)
-			}
-		case <-inspirationDieTicker.C:
-			inspirationDieTicker.Reset(a.period.Value.Period())
-			if a.pause.Value {
-				continue
-			}
-
-			a.ChannelMessageSend(a.CID(), fmt.Sprintf("do you want to use your inspiration? it's a d%d", a.inspirationDie.Value))
-		}
-	}
-}
-
-func (a *Alwinn) handlePause(sess *discordgo.Session, subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
-	p := findOption(subcmd.Options, "pause")
-	pause := p.BoolValue()
-
-	a.pause.C() <- pause
-
-	resp.Write([]byte(fmt.Sprintf("pause set to: %v", pause)))
 	return nil
 }
 
-func (a *Alwinn) handleSetIsmPeriod(sess *discordgo.Session, subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
+func (a *Alwinn) String() string {
+	return "alwinn"
+}
+
+func (a *Alwinn) PostInspirationDie(ctx context.Context, msgFmt string, subscribers map[string]struct{}) error {
+	for cid := range subscribers {
+		if _, err := a.ism.sess.ChannelMessageSend(cid, fmt.Sprintf(msgFmt, a.inspirationDie.Get())); err != nil {
+			a.logs.Print("could not post gif:", err)
+		}
+	}
+	return nil
+}
+
+func (a *Alwinn) handlePause(subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
+	p := findOption(subcmd.Options, "pause")
+	pause := p.BoolValue()
+
+	a.pause.Set(pause)
+	a.cfg.Pause = pause
+	resp.Write([]byte(fmt.Sprintf("pause set to: %v", pause)))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return a.adb.Save(ctx, alwinnCfgFile, a.cfg)
+}
+
+func (a *Alwinn) handleSubscribe(subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
+	s := findOption(subcmd.Options, "subscribe")
+	sub := s.BoolValue()
+
+	if sub {
+		a.cfg.Subscribers[msg.ChannelID] = struct{}{}
+		resp.Write([]byte("subscription added"))
+	} else {
+		delete(a.cfg.Subscribers, msg.ChannelID)
+		resp.Write([]byte("subscription removed"))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return a.adb.Save(ctx, alwinnCfgFile, a.cfg)
+}
+
+func (a *Alwinn) handleSetIsmPeriod(subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
 	max := findOption(subcmd.Options, "max-period")
 	min := findOption(subcmd.Options, "min-period")
 
@@ -274,20 +246,26 @@ func (a *Alwinn) handleSetIsmPeriod(sess *discordgo.Session, subcmd *discordgo.A
 		return err
 	}
 
-	a.period.C() <- period.NewRandom(minDur, maxDur)
-
+	a.period.Set(period.NewRandom(minDur, maxDur))
+	a.cfg.Period.Min, a.cfg.Period.Max = minDur, maxDur
 	resp.Write([]byte(fmt.Sprintf("speak periods set to: %v - %v", minDur, maxDur)))
-	return nil
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return a.adb.Save(ctx, alwinnCfgFile, a.cfg)
 }
 
-func (a *Alwinn) handleSetInspirationDie(sess *discordgo.Session, subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
+func (a *Alwinn) handleSetInspirationDie(subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
 	inspirationDie := findOption(subcmd.Options, "inspiration-die").IntValue()
 	if _, ok := dies[inspirationDie]; !ok {
 		return fmt.Errorf("not a vaild die: %d", inspirationDie)
 	}
 
-	a.inspirationDie.C() <- inspirationDie
-
+	a.inspirationDie.Set(inspirationDie)
+	a.cfg.InspirationDie = inspirationDie
 	resp.Write([]byte(fmt.Sprintf("inspiration die set to: %v", inspirationDie)))
-	return nil
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return a.adb.Save(ctx, alwinnCfgFile, a.cfg)
 }

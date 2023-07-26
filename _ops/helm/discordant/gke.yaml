@@ -1,33 +1,22 @@
 repository: aufish/discordant
-revision: v0.3.0
+revision: v0.4.12
+
+dal:
+  config:
+    driver: googlestorage
+    googlestorage:
+      bucket: discordant
+      key: /tmp/creds/discordant-storage-rwd.json
+  gif:
+    driver: tenor
 
 alwinn:
-  guild: The Songs of Eddiair
-  target:
-    category: The Ballad of Il Nial
-    channel: general
-  permissions:
-    members:
-    - shadow71327
-    - theaufish
-    roles:
-    - DM
   period:
     min: 1m
     max: 5m
   inspiration_die: 8
 
 turg:
-  guild: The Songs of Eddiair
-  target:
-    category: The Ballad of Il Nial
-    channel: general
-  permissions:
-    members:
-    - ampersandys
-    - theaufish
-    roles:
-    - DM
   period:
     min: 1m
     max: 5m
@@ -43,11 +32,15 @@ secrets:
     values:
       token: turg-bot-token
   - from: discordant
-    prefix: dsc_dal_gif
+    prefix: dsc_dal_tenor
     values:
       token: tenor-token
+  - from: discordant
+    prefix: dsc_dal_giphy
+    values:
+      token: giphy-token
 
 secretFiles:
   discordant:
-  - from: discordant-storage-rw
+  - from: discordant-storage-rwd
     path: /tmp/creds

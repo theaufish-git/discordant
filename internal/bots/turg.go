@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
-	"math/rand"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/rleszilm/genms/logging"
+	"github.com/rleszilm/genms/service"
 	"github.com/theaufish-git/discordant/cmd/discordant/config"
 	"github.com/theaufish-git/discordant/internal/dal"
 	"github.com/theaufish-git/discordant/internal/period"
@@ -19,13 +19,17 @@ const (
 )
 
 var (
+	turgTempHPFmts = []string{
+		"don't forget your temp hp! (%v)",
+	}
+
 	turgGifs = []string{
 		"bless",
 		"blessed",
 		"you are blessed",
 	}
 
-	turgisms = []string{
+	turgIsms = []string{
 		"did you remember you’re blessed?",
 		"*you're blessed!*",
 		"bless your attack rolls ya goofs",
@@ -34,8 +38,10 @@ var (
 )
 
 type Turg struct {
-	Generic
+	service.UnimplementedService
 
+	ism    *Ism
+	logs   *logging.Channel
 	period *Signal[period.Period]
 	pause  *Signal[bool]
 	tmpHP  *Signal[int64]
@@ -47,32 +53,26 @@ type Turg struct {
 }
 
 func NewTurg(tdb dal.Turg, gdb dal.Gif, cfg *config.Turg) (*Turg, error) {
-	return &Turg{
-		Generic: Generic{
-			bot:          cfg.Bot,
-			target:       cfg.Target,
-			permissions:  cfg.Permissions,
-			guild:        cfg.Guild,
-			allowMembers: map[string]struct{}{},
-			allowRoles:   map[string]struct{}{},
-			handlers:     map[string]Command{},
-		},
+	t := &Turg{
+		logs:   logging.NewChannel("turg"),
+		period: NewSignal[period.Period](),
+		pause:  NewSignal[bool](),
+		tmpHP:  NewSignal[int64](),
+
 		needsSave: true,
 		cfg:       cfg,
 		tdb:       tdb,
 		gdb:       gdb,
-	}, nil
-}
-
-func (t *Turg) ID() string {
-	return "turg"
+	}
+	t.ism = NewIsm(t.String(), &cfg.Bot, t.gdb, t.period, t.pause)
+	t.ism.WithBucket(t.ism.PostIsm, 2, t.cfg.Subscribers, turgIsms...)
+	t.ism.WithBucket(t.ism.PostGif, 1, t.cfg.Subscribers, turgGifs...)
+	t.ism.WithBucket(t.PostTempHP, 1, t.cfg.Subscribers, turgTempHPFmts...)
+	t.WithDependencies(t.ism)
+	return t, nil
 }
 
 func (t *Turg) Initialize(ctx context.Context) error {
-	if err := t.Generic.Initialize(ctx); err != nil {
-		return err
-	}
-
 	cfg, err := t.tdb.Load(ctx, turgCfgFile)
 	if err != nil {
 		return err
@@ -84,15 +84,15 @@ func (t *Turg) Initialize(ctx context.Context) error {
 		t.needsSave = false
 	}
 
-	t.period = NewSignal[period.Period]()
-	t.period.Value = period.NewRandom(t.cfg.Period.Min, t.cfg.Period.Max)
-	t.pause = NewSignal[bool]()
-	t.pause.Value = t.cfg.Pause
-	t.tmpHP = NewSignal[int64]()
-	t.tmpHP.Value = t.cfg.TempHP
+	if t.cfg.Subscribers == nil {
+		t.cfg.Subscribers = map[string]struct{}{}
+	}
 
-	// create command
-	_, err = t.ApplicationCommandCreate(t.State.User.ID, t.GID(), &discordgo.ApplicationCommand{
+	t.period.Set(period.NewRandom(t.cfg.Period.Min, t.cfg.Period.Max))
+	t.pause.Set(t.cfg.Pause)
+	t.tmpHP.Set(t.cfg.TempHP)
+
+	_, err = t.ism.sess.ApplicationCommandCreate(t.ism.sess.State.User.ID, "", &discordgo.ApplicationCommand{
 		Name:        "turg",
 		Description: "Turg-o-tron commands",
 		Options: []*discordgo.ApplicationCommandOption{
@@ -105,6 +105,19 @@ func (t *Turg) Initialize(ctx context.Context) error {
 						Type:        discordgo.ApplicationCommandOptionBoolean,
 						Description: "Whether to keep speaking.",
 						Name:        "pause",
+						Required:    true,
+					},
+				},
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Name:        "subscribe",
+				Description: "Turg-o-tron should speak in the channel the command is called from.",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionBoolean,
+						Description: "Whether to keep speaking in this channel.",
+						Name:        "subscribe",
 						Required:    true,
 					},
 				},
@@ -147,9 +160,11 @@ func (t *Turg) Initialize(ctx context.Context) error {
 		return err
 	}
 
-	t.Generic.WithHandler("pause", t.handlePause)
-	t.Generic.WithHandler("set-ism-period", t.handleSetIsmPeriod)
-	t.Generic.WithHandler("set-tmp-hp", t.handleSetTmpHP)
+	t.ism.sess.WithInteractionCreateHandler("pause", t.handlePause)
+	t.ism.sess.WithInteractionCreateHandler("subscribe", t.handleSubscribe)
+	t.ism.sess.WithInteractionCreateHandler("set-ism-period", t.handleSetIsmPeriod)
+	t.ism.sess.WithInteractionCreateHandler("set-tmp-hp", t.handleSetTmpHP)
+
 	return nil
 }
 
@@ -158,95 +173,53 @@ func (t *Turg) Shutdown(ctx context.Context) error {
 	t.pause.Close()
 	t.tmpHP.Close()
 
-	return t.Generic.Shutdown(ctx)
-}
-
-func (t *Turg) Run(ctx context.Context) error {
-	cfgTicker := time.NewTicker(5 * time.Minute)
-	ismTicker := time.NewTicker(t.period.Value.Period())
-	defer ismTicker.Stop()
-	tmpHPTicker := time.NewTicker(t.period.Value.Period())
-	defer tmpHPTicker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case period := <-t.period.C():
-			ismTicker.Reset(period.Period())
-			tmpHPTicker.Reset(period.Period())
-
-			t.needsSave = true
-			t.cfg.Period.Max = period.Max()
-			t.cfg.Period.Min = period.Min()
-			t.period.Value = period
-		case pause := <-t.pause.C():
-			if t.pause.Value != pause {
-				if pause {
-					t.ChannelMessageSend(t.CID(), "Turg-o-tron is taking a break.")
-				} else {
-					t.ChannelMessageSend(t.CID(), "Turg-o-tron activated. Form of starry dragon!")
-				}
-			} else {
-				continue
-			}
-
-			t.needsSave = true
-			t.cfg.Pause = pause
-			t.pause.Value = pause
-		case tmpHP := <-t.tmpHP.C():
-			t.needsSave = true
-			t.cfg.TempHP = tmpHP
-			t.tmpHP.Value = tmpHP
-		case <-cfgTicker.C:
-			if !t.needsSave {
-				continue
-			}
-
-			if err := t.tdb.Save(ctx, turgCfgFile, t.cfg); err != nil {
-				log.Println("could not save config:", err)
-			}
-			t.needsSave = false
-		case <-ismTicker.C:
-			ismTicker.Reset(t.period.Value.Period())
-			if t.pause.Value {
-				continue
-			}
-
-			x := rand.Intn(10)
-			switch x {
-			case 0, 1, 2:
-				gifURL, err := t.gdb.Fetch(ctx, turgGifs[x])
-				if err != nil {
-					log.Println("cannot find gif:", err)
-					continue
-				}
-				t.ChannelMessageSend(t.CID(), gifURL)
-			default:
-				ism := turgisms[rand.Intn(len(turgisms))]
-				t.ChannelMessageSend(t.CID(), ism)
-			}
-		case <-tmpHPTicker.C:
-			tmpHPTicker.Reset(t.period.Value.Period())
-			if t.pause.Value || t.tmpHP.Value == 0 {
-				continue
-			}
-
-			t.ChannelMessageSend(t.CID(), fmt.Sprintf("don't forget your temp hp! (%v)", t.tmpHP.Value))
-		}
-	}
-}
-
-func (t *Turg) handlePause(sess *discordgo.Session, subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
-	p := findOption(subcmd.Options, "pause")
-	pause := p.BoolValue()
-
-	t.pause.C() <- pause
-
-	resp.Write([]byte(fmt.Sprintf("pause set to: %v", pause)))
 	return nil
 }
 
-func (t *Turg) handleSetIsmPeriod(sess *discordgo.Session, subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
+func (t *Turg) String() string {
+	return "turg"
+}
+
+func (t *Turg) PostTempHP(ctx context.Context, msgFmt string, subscribers map[string]struct{}) error {
+	for cid := range subscribers {
+		if _, err := t.ism.sess.ChannelMessageSend(cid, fmt.Sprintf(msgFmt, t.tmpHP.Get())); err != nil {
+			t.logs.Print("could not post gif:", err)
+		}
+	}
+	return nil
+}
+
+func (t *Turg) handlePause(subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
+	p := findOption(subcmd.Options, "pause")
+	pause := p.BoolValue()
+
+	t.pause.Set(pause)
+	t.cfg.Pause = pause
+	resp.Write([]byte(fmt.Sprintf("pause set to: %v", pause)))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return t.tdb.Save(ctx, turgCfgFile, t.cfg)
+}
+
+func (t *Turg) handleSubscribe(subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
+	s := findOption(subcmd.Options, "subscribe")
+	sub := s.BoolValue()
+
+	if sub {
+		t.cfg.Subscribers[msg.ChannelID] = struct{}{}
+		resp.Write([]byte("subscription added"))
+	} else {
+		delete(t.cfg.Subscribers, msg.ChannelID)
+		resp.Write([]byte("subscription removed"))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return t.tdb.Save(ctx, turgCfgFile, t.cfg)
+}
+
+func (t *Turg) handleSetIsmPeriod(subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
 	max := findOption(subcmd.Options, "max-period")
 	min := findOption(subcmd.Options, "min-period")
 
@@ -264,17 +237,23 @@ func (t *Turg) handleSetIsmPeriod(sess *discordgo.Session, subcmd *discordgo.App
 		return err
 	}
 
-	t.period.C() <- period.NewRandom(minDur, maxDur)
-
+	t.period.Set(period.NewRandom(minDur, maxDur))
+	t.cfg.Period.Min, t.cfg.Period.Max = minDur, maxDur
 	resp.Write([]byte(fmt.Sprintf("speak periods set to: %v - %v", minDur, maxDur)))
-	return nil
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return t.tdb.Save(ctx, turgCfgFile, t.cfg)
 }
 
-func (t *Turg) handleSetTmpHP(sess *discordgo.Session, subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
+func (t *Turg) handleSetTmpHP(subcmd *discordgo.ApplicationCommandInteractionDataOption, msg *discordgo.InteractionCreate, resp io.Writer) error {
 	tmpHP := findOption(subcmd.Options, "tmp-hp").IntValue()
 
-	t.tmpHP.C() <- tmpHP
-
+	t.tmpHP.Set(tmpHP)
+	t.cfg.TempHP = tmpHP
 	resp.Write([]byte(fmt.Sprintf("tmp hp set to: %v", tmpHP)))
-	return nil
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return t.tdb.Save(ctx, turgCfgFile, t.cfg)
 }
